@@ -1,0 +1,10 @@
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+my_net = FDF_STS()
+device = torch.device("cuda")
+my_net = my_net.to(device)
+criterion = nn.MSELoss()
+train_loss = []
+val_loss = []
+test_loss = []
+optimizer = optim.Adam(params=my_net.parameters(),lr=0.0001)
+Epoch = 1500
