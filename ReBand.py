@@ -43,9 +43,9 @@ def normalize_frequency_domain(F):
     
     energy_mean = energy_mean.clamp(min=1e-12)
     
-
-    
-    return F / torch.sqrt(energy_mean.view(1, 1, -1, 1))
+    gamma = 0.5
+    scale = energy_mean.pow((1.0 - gamma) / 2.0)
+    return F / scale.view(1, 1, -1, 1)
 
 class MultiHeadTimeAttention(nn.Module):
     
