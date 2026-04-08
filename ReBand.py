@@ -25,7 +25,21 @@ class ComplexConv1D(nn.Module):
         out_channels = out.shape[2]
         out = out.view(B, N, L, out_channels)
         return out
+def DFA(x):
+    if torch.is_complex(x):
+        energy = (x.real ** 2 + x.imag ** 2).sum(dim=-1)  # [B, N, K]
+    else:
+        energy = (x ** 2).sum(dim=-1)                     # [B, N, K]
 
+    sort_idx = torch.argsort(energy, dim=2, descending=False)
+
+    x_sorted = torch.gather(
+        x,
+        dim=2,
+        index=sort_idx.unsqueeze(-1).expand(-1, -1, -1, x.size(-1))
+    )
+    return x_sorted
+    
 def create_centered_order():
     center = 0
     remaining = list(range(1, 49))
@@ -120,7 +134,7 @@ class CenteredSpectralModel(nn.Module):
         self.complex_mlp1 = ComplexConv1D(16, 32, kernel_size=3)   
         self.fuse = nn.Linear(3,1)
         self.decoder = LongTermDecoder(input_dim=input_dim, future_steps=future_steps)
-        
+        DFA = DFA()
         centered_order = create_centered_order()
         self.register_buffer('forward_indices', torch.tensor(centered_order, dtype=torch.long))
         
@@ -136,7 +150,8 @@ class CenteredSpectralModel(nn.Module):
         Temp = self.Temp(x_feat)
         Spal = self.Spal(x_feat.permute(0,2,1,3)).permute(0,2,1,3)
         F_standard = fft.rfft(x_feat, dim=2)    # [B, N, 49, D]
-        F_centered = F_standard[:, :, self.forward_indices, :]  # [B, N, 49, D]
+        F_order = DFA(F_standard)
+        F_centered = F_order[:, :, self.forward_indices, :]  # [B, N, 49, D]
         F_centered_norm = normalize_frequency_domain(F_centered)
         F_centered_enhanced = self.complex_mlp1(self.complex_mlp(F_centered_norm))     # [B, N, 49, D]
         F_standard_enhanced = torch.zeros_like(F_centered_enhanced)
