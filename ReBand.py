@@ -134,7 +134,6 @@ class CenteredSpectralModel(nn.Module):
         self.complex_mlp1 = ComplexConv1D(16, 32, kernel_size=3)   
         self.fuse = nn.Linear(3,1)
         self.decoder = LongTermDecoder(input_dim=input_dim, future_steps=future_steps)
-        DFA = DFA()
         centered_order = create_centered_order()
         self.register_buffer('forward_indices', torch.tensor(centered_order, dtype=torch.long))
         
