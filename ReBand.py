@@ -31,7 +31,7 @@ def DFA(x):
     else:
         energy = (x ** 2).sum(dim=-1)                     # [B, N, K]
 
-    sort_idx = torch.argsort(energy, dim=2, descending=False)
+    sort_idx = torch.argsort(energy, dim=2, descending=True)
 
     x_sorted = torch.gather(
         x,
