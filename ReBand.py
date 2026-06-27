@@ -26,19 +26,21 @@ class ComplexConv1D(nn.Module):
         out = out.view(B, N, L, out_channels)
         return out
 def DFA(x):
+    # x: [B, N, K, D]
     if torch.is_complex(x):
         energy = (x.real ** 2 + x.imag ** 2).sum(dim=-1)  # [B, N, K]
     else:
-        energy = (x ** 2).sum(dim=-1)                     # [B, N, K]
+        energy = (x ** 2).sum(dim=-1)
 
-    sort_idx = torch.argsort(energy, dim=2, descending=True)
+    sort_idx = torch.argsort(energy, dim=2, descending=True)  # [B, N, K]
 
-    x_sorted = torch.gather(
+    x_rank = torch.gather(
         x,
         dim=2,
         index=sort_idx.unsqueeze(-1).expand(-1, -1, -1, x.size(-1))
     )
-    return x_sorted
+
+    return x_rank, sort_idx
     
 def create_centered_order():
     center = 0
@@ -148,14 +150,25 @@ class CenteredSpectralModel(nn.Module):
         x_feat = self.encoder(x.unsqueeze(-1))  # [B, N, T, D]
         Temp = self.Temp(x_feat)
         Spal = self.Spal(x_feat.permute(0,2,1,3)).permute(0,2,1,3)
-        F_standard = fft.rfft(x_feat, dim=2)    # [B, N, 49, D]
-        F_order = DFA(F_standard)
-        F_centered = F_order[:, :, self.forward_indices, :]  # [B, N, 49, D]
+        F_standard = fft.rfft(x_feat, dim=2)  # [B, N, K, D]
+        
+        F_order, sort_idx = DFA(F_standard)   # F_order: [B, N, K, D]
+        
+        F_centered = F_order[:, :, self.forward_indices, :]
+        
         F_centered_norm = normalize_frequency_domain(F_centered)
-        F_centered_enhanced = self.complex_mlp1(self.complex_mlp(F_centered_norm))     # [B, N, 49, D]
-        F_standard_enhanced = torch.zeros_like(F_centered_enhanced)
-        F_standard_enhanced = F_centered_enhanced[:, :, self.inverse_map, :]
-        x_time = fft.irfft(F_standard_enhanced, n=T, dim=2)  # [B, N, T, D]
+        F_centered_enhanced = self.complex_mlp1(self.complex_mlp(F_centered_norm))
+        
+        F_rank_enhanced = F_centered_enhanced[:, :, self.inverse_map, :]
+        
+        F_standard_enhanced = torch.zeros_like(F_standard)
+        
+        F_standard_enhanced.scatter_(
+            dim=2,
+            index=sort_idx.unsqueeze(-1).expand(-1, -1, -1, F_standard.size(-1)),
+            src=F_rank_enhanced
+        )
+        x_time = fft.irfft(F_standard_enhanced, n=T, dim=2)
         ############
         final = self.fuse(torch.stack((Temp,Spal,x_time),dim=4)).squeeze()
         pred = self.decoder(final)
