@@ -132,7 +132,7 @@ class CenteredSpectralModel(nn.Module):
         self.Temp = MultiHeadTimeAttention()
         self.Spal = MultiHeadTimeAttention()
 #         self.complex_mlp = ComplexMLP(input_dim=input_dim, output_dim=input_dim)
-        self.complex_mlp = ComplexConv1D(32, 16, kernel_size=3)
+        self.complex_mlp = ComplexConv1D(1, 16, kernel_size=3)
         self.complex_mlp1 = ComplexConv1D(16, 32, kernel_size=3)   
         self.fuse = nn.Linear(3,1)
         self.decoder = LongTermDecoder(input_dim=input_dim, future_steps=future_steps)
@@ -150,7 +150,7 @@ class CenteredSpectralModel(nn.Module):
         x_feat = self.encoder(x.unsqueeze(-1))  # [B, N, T, D]
         Temp = self.Temp(x_feat)
         Spal = self.Spal(x_feat.permute(0,2,1,3)).permute(0,2,1,3)
-        F_standard = fft.rfft(x_feat, dim=2)  # [B, N, K, D]
+        F_standard = fft.rfft(x.unsqueeze(-1), dim=2)  # [B, N, K, D]
         
         F_order, sort_idx = DFA(F_standard)   # F_order: [B, N, K, D]
         
@@ -161,11 +161,11 @@ class CenteredSpectralModel(nn.Module):
         
         F_rank_enhanced = F_centered_enhanced[:, :, self.inverse_map, :]
         
-        F_standard_enhanced = torch.zeros_like(F_standard)
+        F_standard_enhanced = torch.zeros_like(F_centered_enhanced)
         
         F_standard_enhanced.scatter_(
             dim=2,
-            index=sort_idx.unsqueeze(-1).expand(-1, -1, -1, F_standard.size(-1)),
+            index=sort_idx.unsqueeze(-1).expand(-1, -1, -1, F_centered_enhanced.size(-1)),
             src=F_rank_enhanced
         )
         x_time = fft.irfft(F_standard_enhanced, n=T, dim=2)
