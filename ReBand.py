@@ -122,7 +122,7 @@ class CenteredSpectralModel(nn.Module):
         self.encoder = nn.Linear(1, 32)
         self.Temp = MultiHeadTimeAttention()
         self.Spal = MultiHeadTimeAttention()
-        self.complex_mlp = ComplexConv1D(1, 16, kernel_size=3)
+        self.complex_mlp = ComplexConv1D(32, 16, kernel_size=3)
         self.complex_mlp1 = ComplexConv1D(16, 32, kernel_size=3)   
         self.fuse = nn.Linear(3,1)
         self.decoder = LongTermDecoder(input_dim=input_dim, future_steps=future_steps)
