@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.fft as fft
-    
 class ComplexConv1D(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, padding=1):
         super().__init__()
@@ -9,16 +8,12 @@ class ComplexConv1D(nn.Module):
         self.conv_r = nn.Conv1d(in_channels, out_channels, kernel_size, padding=padding)
         self.conv_i = nn.Conv1d(in_channels, out_channels, kernel_size, padding=padding)
         self.act = nn.GELU()
-    
     def forward(self, x):
         B, N, L, D = x.shape
-        x_flat = x.reshape(B*N, L, D).permute(0, 2, 1)  # [B*N, D, L]
-        
+        x_flat = x.reshape(B*N, L, D).permute(0, 2, 1)  
         real, imag = x_flat.real, x_flat.imag
-        # 卷积： (real * conv_r) - (imag * conv_i) + i[(real * conv_i) + (imag * conv_r)]
         out_r = self.conv_r(real) - self.conv_i(imag)
         out_i = self.conv_r(imag) + self.conv_i(real)
-        
         y = torch.stack([out_r, out_i], dim=-1)
         out = F.softshrink(y, lambd=0.01)
         out = torch.view_as_complex(out).permute(0, 2, 1)
@@ -26,20 +21,16 @@ class ComplexConv1D(nn.Module):
         out = out.view(B, N, L, out_channels)
         return out
 def DFA(x):
-    # x: [B, N, K, D]
     if torch.is_complex(x):
-        energy = (x.real ** 2 + x.imag ** 2).sum(dim=-1)  # [B, N, K]
+        energy = (x.real ** 2 + x.imag ** 2).sum(dim=-1)  
     else:
         energy = (x ** 2).sum(dim=-1)
-
-    sort_idx = torch.argsort(energy, dim=2, descending=True)  # [B, N, K]
-
+    sort_idx = torch.argsort(energy, dim=2, descending=True) 
     x_rank = torch.gather(
         x,
         dim=2,
         index=sort_idx.unsqueeze(-1).expand(-1, -1, -1, x.size(-1))
     )
-
     return x_rank, sort_idx
     
 def create_centered_order():
@@ -88,24 +79,24 @@ class MultiHeadTimeAttention(nn.Module):
         
         x_reshaped = x.reshape(B * N, T, D)
         
-        Q = self.W_q(x_reshaped)  # [B*N, T, D]
-        K = self.W_k(x_reshaped)  # [B*N, T, D]
-        V = self.W_v(x_reshaped)  # [B*N, T, D]
+        Q = self.W_q(x_reshaped)  
+        K = self.W_k(x_reshaped)  
+        V = self.W_v(x_reshaped)  
         
-        Q = Q.view(B * N, T, self.num_heads, self.d_k).permute(0, 2, 1, 3)  # [B*N, H, T, d_k]
-        K = K.view(B * N, T, self.num_heads, self.d_k).permute(0, 2, 1, 3)  # [B*N, H, T, d_k]
-        V = V.view(B * N, T, self.num_heads, self.d_k).permute(0, 2, 1, 3)  # [B*N, H, T, d_k]
+        Q = Q.view(B * N, T, self.num_heads, self.d_k).permute(0, 2, 1, 3)  
+        K = K.view(B * N, T, self.num_heads, self.d_k).permute(0, 2, 1, 3)  
+        V = V.view(B * N, T, self.num_heads, self.d_k).permute(0, 2, 1, 3)  
         
-        scores = torch.matmul(Q, K.transpose(-2, -1)) / self.scale  # [B*N, H, T, T]
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / self.scale  
         
         attn = F.softmax(scores, dim=-1)
         attn = self.dropout(attn)
         
-        context = torch.matmul(attn, V)  # [B*N, H, T, d_k]
+        context = torch.matmul(attn, V) 
         
-        context = context.permute(0, 2, 1, 3).contiguous()  # [B*N, T, H, d_k]
-        context = context.view(B * N, T, self.d_model)  # [B*N, T, D]
-        output = self.W_o(context)  # [B*N, T, D]
+        context = context.permute(0, 2, 1, 3).contiguous()  
+        context = context.view(B * N, T, self.d_model) 
+        output = self.W_o(context)  
         
         output = output.view(B, N, T, D)
         return output
@@ -113,7 +104,7 @@ class MultiHeadTimeAttention(nn.Module):
 class LongTermDecoder(nn.Module):
     def __init__(self, input_dim=32, seq_len=96, hidden_size=128,future_steps=96):
         super().__init__()
-        self.L = nn.Linear(96,360) ####pred_size
+        self.L = nn.Linear(96,360) 
         self.L1 = nn.Sequential(
             nn.Linear(32, 16),
             nn.LeakyReLU(),
@@ -131,15 +122,12 @@ class CenteredSpectralModel(nn.Module):
         self.encoder = nn.Linear(1, 32)
         self.Temp = MultiHeadTimeAttention()
         self.Spal = MultiHeadTimeAttention()
-#         self.complex_mlp = ComplexMLP(input_dim=input_dim, output_dim=input_dim)
         self.complex_mlp = ComplexConv1D(1, 16, kernel_size=3)
         self.complex_mlp1 = ComplexConv1D(16, 32, kernel_size=3)   
         self.fuse = nn.Linear(3,1)
         self.decoder = LongTermDecoder(input_dim=input_dim, future_steps=future_steps)
         centered_order = create_centered_order()
         self.register_buffer('forward_indices', torch.tensor(centered_order, dtype=torch.long))
-        
-        # inverse_map[original_index] = position_in_centered_order
         inverse_map = torch.empty(49, dtype=torch.long)
         for new_pos, orig_idx in enumerate(centered_order):
             inverse_map[orig_idx] = new_pos
@@ -147,12 +135,12 @@ class CenteredSpectralModel(nn.Module):
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, T = x.shape
-        x_feat = self.encoder(x.unsqueeze(-1))  # [B, N, T, D]
+        x_feat = self.encoder(x.unsqueeze(-1))  
         Temp = self.Temp(x_feat)
         Spal = self.Spal(x_feat.permute(0,2,1,3)).permute(0,2,1,3)
-        F_standard = fft.rfft(x.unsqueeze(-1), dim=2)  # [B, N, K, D]
+        F_standard = fft.rfft(x_feat, dim=2)  
         
-        F_order, sort_idx = DFA(F_standard)   # F_order: [B, N, K, D]
+        F_order, sort_idx = DFA(F_standard)   
         
         F_centered = F_order[:, :, self.forward_indices, :]
         
@@ -161,15 +149,14 @@ class CenteredSpectralModel(nn.Module):
         
         F_rank_enhanced = F_centered_enhanced[:, :, self.inverse_map, :]
         
-        F_standard_enhanced = torch.zeros_like(F_centered_enhanced)
+        F_standard_enhanced = torch.zeros_like(F_standard)
         
         F_standard_enhanced.scatter_(
             dim=2,
-            index=sort_idx.unsqueeze(-1).expand(-1, -1, -1, F_centered_enhanced.size(-1)),
-            src=F_rank_enhanced
+            index=sort_idx.unsqueeze(-1).expand(-1, -1, -1, F_standard.size(-1)),
+            src=F_standard
         )
         x_time = fft.irfft(F_standard_enhanced, n=T, dim=2)
-        ############
         final = self.fuse(torch.stack((Temp,Spal,x_time),dim=4)).squeeze()
         pred = self.decoder(final)
         return pred
