@@ -18,18 +18,12 @@ import scipy
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 import pandas as pd
 device = torch.device("cuda")
-# 假设你的CSV文件名为 'data.csv'，并且位于与此Python脚本相同的目录下
 file_path = 'ETTh1.csv'
-# file_path1 = 'electricity.csv'
-
-# 读取CSV文件
 df = pd.read_csv(file_path)
 flow_data = df.to_numpy()[0:,1:].T
 flow_data = np.array(flow_data,dtype=np.float32)
-# 显示DataFrame的前几行，以检查数据是否正确读入
 print("flow_data的形状为：", flow_data.shape)
 norm = np.linalg.norm(flow_data)
-# 对向量进行归一化处理
 flow_data = (flow_data / norm).T
 flow_data.shape
 print("flow_data的形状为：", flow_data.shape)
@@ -52,9 +46,6 @@ class LoadData(Dataset):
         self.history_length = history_length  # 10
         self.time_interval = time_interval  # 60min
         self.one_day_length = int(24 * 60 / self.time_interval)
-#         self.graph = A
-        #self.graph = A
-        #对数据进行预处理，做一个归一化，norm_dim定义了在哪一个维度上进行归一化
         self.flow_data = flow_data
 
     def __len__(self):
@@ -85,11 +76,8 @@ class LoadData(Dataset):
         data_y = LoadData.to_tensor(data_y).to(device)# [N, 1, D]
 
         return { "flow_x": data_x, "flow_y": data_y}
-   
-    """
-    定义一些辅助函数
-    
-    """
+
+
         
     def slice_data(data, history_length, index, train_mode):
 
@@ -118,7 +106,6 @@ import torch.nn.functional as F
 import os
 import time
 from torch.utils.data import DataLoader
-# 加载数据
 train_data = LoadData(num_nodes=7, divide_days=[10452,3484,3484],
                           time_interval=60*24, history_length=96,
                           train_mode="train")
