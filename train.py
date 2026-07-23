@@ -1,5 +1,5 @@
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
-my_net = FDF_STS()
+my_net = CenteredSpectralModel()
 device = torch.device("cuda")
 my_net = my_net.to(device)
 criterion = nn.MSELoss()
